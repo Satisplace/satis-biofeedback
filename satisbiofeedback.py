@@ -1,8 +1,7 @@
 # Biofeedback mindfulness by Simone TRavaglini
-# Licence Apache 2.0
-# Da fare:  farlo funzionare anche se non arriva valore HR (modifica sketch arduino),
-# PROBLEMI: quando riparte il grafico viene ricreato un nuovo grafico invece che aggiornato il precedente, rimettere creazione CSV
-#
+# Licence GPL3
+# parte il grafico viene ricreato un nuovo grafico invece che aggiornato il precedente, rimettere creazione CSV
+
 
 import csv
 import random
@@ -52,17 +51,9 @@ lfHfRatio = 0.0
 
 
 collectOn = False
-# clearOn = False
 printOn = False
 
 
-# Crea un oggetto Thread
-# read_data_thread = threading.Thread(target=read_serial_data)
-
-# print_data_thread = threading.Thread(target=print_data)
-
-
-# print_data_thread.start()
 
 
 # funzione collezione dati seriali e stampa a video dell'ultimo dato
@@ -71,17 +62,14 @@ def collect_serial_data():
     
     hrGot = False
     if ser and collectOn:
-        #currentDateAndTime = datetime.now()
-        #timenow = format_timer(time_as_int() - start_time)       
+             
               
         ser_bytes = ser.readline()
         decoded_bytes = ser_bytes.decode("utf-8").rstrip()
         
         window["-OUTPUT-"].print(decoded_bytes)
         
-        # Leggi una riga di dati dalla porta seriale
-        #line = ser.readline().decode().strip()  # Decodifica e rimuove spazi vuoti
-        #window["-OUTPUT-"].print(line)
+      
         # Dividi i dati in base alle virgole
         
         if decoded_bytes.startswith('G-'):
@@ -143,17 +131,7 @@ def collect_serial_data():
         
         
         
-
-                
-        
-        
-        
-        
-        
-        
-        
-        
-        
+    
                 
                 
 # funzione collezione dati seriali e stampa a video dell'ultimo dato
@@ -228,22 +206,6 @@ def update_graph():
             ax.xaxis.set_major_formatter(ticker.FuncFormatter(format_xaxis))
             ax2.xaxis.set_major_formatter(ticker.FuncFormatter(format_xaxis))
 
-            
-            
-
-                       
-            # Cancella le linee esistenti nei grafici
-            #ax.cla()
-            #ax2.cla()
-            #line.set_data(timestamps, values3)
-            #line2.set_data(timestamps, values2)
-            #ax.relim()
-            #ax.autoscale_view()
-            #ax2.relim()
-            #ax2.autoscale_view() 
-            #canvas.draw()
-            #canvas2.draw()         
-            
             clearOn = False
             
         if len(battiti) == len(timestamps2) and len(values3) == len(timestamps):
@@ -268,11 +230,9 @@ def update_graph():
             time.sleep(0.1)
 
 
-# Creiamo un evento per controllare lo stato del thread
-exit_event = threading.Event()
+
 
 # creao il thread
-#data_thread = threading.Thread(target=collect_serial_data)
 graph_thread = threading.Thread(target=update_graph)
 
 
@@ -334,7 +294,7 @@ pause_position = 0  # Posizione di pausa dell'audio
 values1 = []
 values2 = []
 values3 = []
-last_values = ["", "", ""]  # lista vuota per contenere gli ultimi 3 valori
+#last_values = ["", "", ""]  # lista vuota per contenere gli ultimi 3 valori
 timestamps = []
 timestamps2 = []
 interpolati = []
@@ -505,32 +465,13 @@ while True:
 
     elif event == "-STOP-":
         pygame.mixer.music.stop()
-        # graph_running = False
-        # is_playing = False
         collectOn = False
-
-        # printOn = False
         window["-STOP-"].update(disabled=True)
-        # plt.close('all')  # Chiudiamo tutte le figure
 
-        # svuoto tutte le serie di dati acquisite
-        # values1.clear()
-        # values2.clear()
-        # values3.clear()
-        # rr_intervals_without_outliers.clear()
-        # timestamps.clear()
-
-        # Aggiorna l'interfaccia grafica con i valori resettati
-        # window['-LAST_VALUES-'].update('')
-        # window['-TIMER-'].update('')
-
-   
-        
-        
     
     try:
         collect_serial_data()
-        # print_data()
+        
 
     except ValueError:
         continue
