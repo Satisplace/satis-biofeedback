@@ -1,6 +1,6 @@
 # Biofeedback mindfulness by Simone TRavaglini
 # Licence GPL3
-# parte il grafico viene ricreato un nuovo grafico invece che aggiornato il precedente, rimettere creazione CSV
+
 
 
 import csv
