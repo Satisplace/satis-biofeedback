@@ -37,6 +37,12 @@ reading_serial = False
 graph_running = False
 firstRun = False
 
+increaseGsrDetect=False
+indexIncreaseGsrDetect = 0
+#peakDetectorInterval = 10
+#increaseGsrMax = 1000000 #a value never happen
+playBell=False
+
 sd_nn = 0.0  # Inizializza sd_nn con un valore predefinito
 rmssd = 0.0  # Inizializza rmssd con un valore predefinito
 min_hr = 0.0  # Inizializza min_hr con un valore predefinito
@@ -46,6 +52,8 @@ lfband= 0.0
 hfband= 0.0
 vlf= 0.0
 lfHfRatio = 0.0
+
+timeOverGsrMax = 0
 
 
 
@@ -58,12 +66,13 @@ printOn = False
 
 # funzione collezione dati seriali e stampa a video dell'ultimo dato
 def collect_serial_data():
-    global ser, decoded_bytes, ser_bytes, currentDateAndTime, timenow, battiti,sd_nn, rmssd, min_hr, max_hr, gsrNow, nn_intervals_list, mean_hr, lfband,hfband,vlf,lfHfRatio
-    
+    global ser, decoded_bytes, ser_bytes, currentDateAndTime, timenow, battiti,sd_nn, rmssd, min_hr, max_hr, gsrNow, nn_intervals_list, mean_hr, lfband,hfband,vlf,lfHfRatio, limitGSR, timeOverGsrMax, indexIncreaseGsrDetect, increaseGsrDetect,increaseGSR,playBell
+    peakDetectorInterval = int(values['-SECINCREASE-'])
+    increaseGsrMax = int(values['-PERCINCREASE-'])
     hrGot = False
     if ser and collectOn:
              
-              
+        #limitGSR=float(values['-GSR-'])      
         ser_bytes = ser.readline()
         decoded_bytes = ser_bytes.decode("utf-8").rstrip()
         
@@ -76,13 +85,34 @@ def collect_serial_data():
                 values3.append(float(decoded_bytes[2:]))  # Rimuovi 'G-' e converte in float
                 timestamps.append(time_as_int() - start_time)
                 gsrNow = float(decoded_bytes[2:])
+                #verifica se negli ultimi 20 secondi c'è stato un aumento del GSR
+                
+                if len(values3)-indexIncreaseGsrDetect > peakDetectorInterval:
+                    increaseGsrDetect=False 
+                
+                if (len(values3)>peakDetectorInterval+1) and (values3[len(values3)-(peakDetectorInterval+1)] != 0):
+                    increaseGSR=(values3[len(values3)-1]-values3[len(values3)-(peakDetectorInterval+1)])/values3[len(values3)-(peakDetectorInterval+1)]*100
+                    #print(increaseGSR)
+                    if increaseGSR>increaseGsrMax and increaseGsrDetect==False:
+                        increaseGsrDetect=True
+                        print("play sound")
+                        playBell=True
+                        
+                        indexIncreaseGsrDetect=len(values3)-1    
+                
+                    
+                #if gsrNow > limitGSR:
+                    #print('sopra soglia!')
+                    #playbell
+                    #timeOverGsrMax = time_as_int();
+                    #firstBell = timeOverGsrMax;
         elif decoded_bytes.startswith('H-'):
                 values2.append(int(decoded_bytes[2:]))  # Rimuovi 'H-' e converte in intero
                 timestamps2.append(time_as_int() - start_time)
                 hrGot = True
                 
                 
-                
+
 
         
         if hrGot:
@@ -90,7 +120,7 @@ def collect_serial_data():
             indici_picchi, _ = find_peaks(values2)
             valori_senza_picchi = np.delete(values2, indici_picchi)
             rr_intervals_without_outliers = remove_outliers(rr_intervals=values2,  
-                                                    low_rri=300, high_rri=2000)
+                                                    low_rri=450, high_rri=1340)
             interpolated_rr_intervals = interpolate_nan_values(rr_intervals=rr_intervals_without_outliers,
                                                     interpolation_method="linear")
             # This remove ectopic beats from signal
@@ -130,49 +160,41 @@ def collect_serial_data():
         window['-TIMER-'].update(timenow)
         
         
-        
     
-                
-                
-# funzione collezione dati seriali e stampa a video dell'ultimo dato
-def collect_serial_data2():
-    global ser, decoded_bytes, ser_bytes, currentDateAndTime, timenow
-    if ser and collectOn:
-        ser_bytes = ser.readline()
-        decoded_bytes = ser_bytes.decode("utf-8").rstrip()
-        window["-OUTPUT-"].print(decoded_bytes)
+def play_bell():
+    # Inizializza pygame
+    pygame.init()
 
-        currentDateAndTime = datetime.now()
-        timenow = format_timer(time_as_int() - start_time)
+    # Crea un mixer audio
+    pygame.mixer.init()
 
-        values = decoded_bytes.split(",")
-        values = [v.replace('"', "") for v in values]
+    # Specifica il percorso del file MP3 da riprodurre
+    file_mp3 = 'bell.wav'
 
-        if len(values) == 4:
-            try:
-                value1 = float(values[1])  # time
-                value2 = float(values[3])  # hr
-                value3 = float(values[2])  # gsr
+    # Carica il file MP3
+    pygame.mixer.music.load(file_mp3)
 
-                values1.append(value1)
-                values2.append(value2)
-                values3.append(value3)
-                timestamps.append(time_as_int() - start_time)
-                window["-LAST_VALUES-"].update("")
-                last_values_str = ""  # Inizializza la variabile per i valori passati
-                last_values_str = f": GSR: {value2},\n HR:{value3}"
-                window["-LAST_VALUES-"].update(last_values_str)
-                
+    # Riproduci il file MP3
+    pygame.mixer.music.play()
 
-            except ValueError:
-                sg.popup(f"Error in collect data: {e}")
+    # Lascia il programma in esecuzione finché la musica sta suonando
+    #while pygame.mixer.music.get_busy():
+        #pass
 
+    # Chiudi pygame
+    #pygame.quit()
 
 # Funzione per l'aggiornamento del grafico
 def update_graph():
-    global ax, ax2, clearOn
-
+    global ax, ax2, clearOn, playBell
+    
+            
     while graph_running:
+        
+        
+        if playBell == True:
+            play_bell()
+            playBell=False
         
         if clearOn:
             timestamps.clear()
@@ -210,7 +232,13 @@ def update_graph():
             
         if len(battiti) == len(timestamps2) and len(values3) == len(timestamps):
         
-            #ax.axvline(x=100, color='red', linestyle='--')
+            try:
+               #ax.axvline(x=100, color='red', linestyle='--')
+               limitGSR=int(values['-GSR-'])
+               ax.axhline(y=limitGSR, color='r', linestyle='--', linewidth=2)
+            except Exception as e:
+                sg.popup(f"Errore stampa linea orizzontale: {e}")
+                continue
             
             line.set_data(timestamps, values3)
             line2.set_data(timestamps2, battiti)
@@ -313,6 +341,7 @@ def get_available_ports():
 baud_list = ["1200", "2400", "4800", "9600", "19200", "38400", "57600", "115200"]
 
 # Definisci il layout
+sg.theme('LightGreen2')
 layout = [
     [
         sg.Column(
@@ -327,10 +356,16 @@ layout = [
                     )
                 ],
                 [sg.Text("Seleziona il baudrate:")],
-                [sg.Combo(baud_list, size=(30, 1), key="-BAUD-", default_value="9600")],
+                [sg.Combo(baud_list, size=(30, 1), key="-BAUD-", default_value="115200")],
                 [sg.Multiline(size=(50, 10), key="-OUTPUT-")],
                 [sg.Text("Inserisci il tuo codice identificativo:")],
                 [sg.InputText(identificativo, key="-IDENTIFICATIVO-")],
+                [sg.Text("Inserisci un valore soglia GSR:")],
+                [sg.InputText(key="-GSR-",default_text="0")],
+                [sg.Text("Aumento % per suono GSR:")],
+                [sg.InputText(key="-PERCINCREASE-",default_text="0")],
+                [sg.Text("Su quanti secondi (0 per non attivare il suono):")],
+                [sg.InputText(key="-SECINCREASE-",default_text="0")],
                 
                 [sg.Text("Seleziona un file audio:")],
                 [sg.Combo(audio_files, key="-FILE-")],
@@ -339,6 +374,7 @@ layout = [
                     sg.Button("Stop", key="-STOP-"),
                     sg.Button("Esci", key="-EXIT-"),
                 ],
+                
                 
                 
             ],
@@ -355,8 +391,7 @@ layout = [
             vertical_alignment="top",
         ),
         sg.Column([[sg.Canvas(key="canvas")], 
-                   [sg.Canvas(key="canvas2")],
-                   [sg.Button("Graph", key="-GRAPH-")]],
+                   [sg.Canvas(key="canvas2")]],
                   vertical_alignment="top"
                   ),
         
@@ -365,7 +400,7 @@ layout = [
 
 
 # Crea la finestra dell'interfaccia grafica
-window = sg.Window("OPENBIOFEEDBACK", layout, finalize=True, resizable=True)
+window = sg.Window("OPENBIOFEEDBACK", layout, finalize=True, resizable=True,)
 
 
 # Creazione iniziale dei grafici e dei canvas
@@ -410,6 +445,7 @@ while True:
     if event == "-EXIT-" or event == sg.WIN_CLOSED:
         break
     elif event == "-START-":
+        (values['-GSR-'])
         if not values["-PORT-"]:
             sg.popup("Seleziona una porta seriale.")
         else:
@@ -440,7 +476,7 @@ while True:
             graph_running = True
 
             if firstRun == False:
-                #data_thread.start()
+                
                 graph_thread.start()
                 firstRun = True
 
@@ -472,9 +508,12 @@ while True:
     try:
         collect_serial_data()
         
+        
 
     except ValueError:
         continue
+    
+    
 
 
 # Termina il thread del grafico e chiude la porta seriale
