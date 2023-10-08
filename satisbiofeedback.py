@@ -1,9 +1,11 @@
 # Biofeedback mindfulness by Simone TRavaglini
 # Licence GPL3
-
+# parte il grafico viene ricreato un nuovo grafico invece che aggiornato il precedente, rimettere creazione CSV
 
 
 import csv
+import json
+import os
 import random
 import serial
 import time
@@ -28,6 +30,7 @@ from hrvanalysis.extract_features import get_poincare_plot_features
 from hrvanalysis import get_frequency_domain_features
 #from hrvanalysis import plot_timeseries, plot_distrib, plot_psd, plot_poincare
 
+settings_file_path = os.path.join(os.path.dirname(__file__), "impostazioni.json")
 
 
 
@@ -60,6 +63,9 @@ timeOverGsrMax = 0
 
 collectOn = False
 printOn = False
+drawGsrLimit = False
+removeGsrLimit = False
+addTopic = False
 
 
 
@@ -109,7 +115,12 @@ def collect_serial_data():
         elif decoded_bytes.startswith('H-'):
                 values2.append(int(decoded_bytes[2:]))  # Rimuovi 'H-' e converte in intero
                 timestamps2.append(time_as_int() - start_time)
+                
                 hrGot = True
+                
+        elif decoded_bytes.startswith('E-'):
+                emgSeries.append(float(decoded_bytes[2:]))  # Rimuovi 'E-' e converte in intero
+                timestamps3.append(time_as_int() - start_time) #provvisorio
                 
                 
 
@@ -150,11 +161,15 @@ def collect_serial_data():
             
         
         
-        window["-LAST_VALUES-"].update("")
-        last_values_str = ""  # Inizializza la variabile per i valori passati
+        window["-LAST_VALUES_GSR-"].update("")
+        window["-LAST_VALUES_HR-"].update("")
+        last_values_str_gsr = ""  # Inizializza la variabile per i valori passati
+        last_values_str_hr = ""  # Inizializza la variabile per i valori passati
         #last_values_str = f": GSR:  HR:"
-        last_values_str = f"SDNN:{sd_nn:.2f}\nRMSSD:{rmssd:.2f}\nminHR:{min_hr:.2f}\nmaxHR:{max_hr:.2f}\nMean HR:{mean_hr:.2f}\nLF:{lfband:.2f}\nHF:{hfband:.2f}\nVLF:{vlf:.2f}\nLF/HF:{lfHfRatio:.2f}\n\nGSR:{gsrNow:.2f} "
-        window["-LAST_VALUES-"].update(last_values_str)
+        last_values_str_gsr = f"GSR:{gsrNow:.2f}"
+        last_values_str_hr = f"SDNN:{sd_nn:.2f} RMSSD:{rmssd:.2f} minHR:{min_hr:.2f} maxHR:{max_hr:.2f} Mean HR:{mean_hr:.2f}\nLF:{lfband:.2f} HF:{hfband:.2f} VLF:{vlf:.2f} LF/HF:{lfHfRatio:.2f}"
+        window["-LAST_VALUES_GSR-"].update(last_values_str_gsr)
+        window["-LAST_VALUES_HR-"].update(last_values_str_hr)
         # Aggiorna l'interfaccia grafica con il timer
         timenow = format_timer(time_as_int() - start_time)
         window['-TIMER-'].update(timenow)
@@ -186,7 +201,7 @@ def play_bell():
 
 # Funzione per l'aggiornamento del grafico
 def update_graph():
-    global ax, ax2, clearOn, playBell
+    global ax, ax2, ax3, clearOn, playBell, drawGsrLimit, removeGsrLimit, addTopic
     
             
     while graph_running:
@@ -199,25 +214,33 @@ def update_graph():
         if clearOn:
             timestamps.clear()
             timestamps2.clear()
+            timestamps3.clear()
             values2.clear()
             values3.clear()
             battiti.clear()
+            emgSeries.clear()
             
             values2.append(1000)
             battiti.append(60)
             values3.append(0)
+            emgSeries.append(1)
             timestamps.append(time_as_int() - start_time)
             timestamps2.append(time_as_int() - start_time)
+            timestamps3.append(time_as_int() - start_time)
             ax.clear()
             ax2.clear()
-            print("cancellato")
+            ax3.clear()
+            
 
             (line,) = ax.plot(timestamps, values3, color="blue", label="GSR")
             (line2,) = ax2.plot(timestamps2, battiti, color="red", label="HR")
+            (line3,) = ax3.plot(timestamps3, emgSeries, color="green", label="EMG")
             line.set_label("GSR")
             line2.set_label("HR")
+            line3.set_label("EMG")
             ax.legend(loc="upper left")
             ax2.legend(loc="upper left")
+            ax3.legend(loc="upper left")
 
 
             def format_xaxis(x, _):
@@ -227,35 +250,71 @@ def update_graph():
             # Formatta asse X hh:mm:ss
             ax.xaxis.set_major_formatter(ticker.FuncFormatter(format_xaxis))
             ax2.xaxis.set_major_formatter(ticker.FuncFormatter(format_xaxis))
+            ax3.xaxis.set_major_formatter(ticker.FuncFormatter(format_xaxis))
 
             clearOn = False
             
-        if len(battiti) == len(timestamps2) and len(values3) == len(timestamps):
+        if len(battiti) == len(timestamps2) and len(values3) == len(timestamps) and len(emgSeries) == len(timestamps3):
         
-            try:
+            if drawGsrLimit == True:
                #ax.axvline(x=100, color='red', linestyle='--')
+               
                limitGSR=int(values['-GSR-'])
                ax.axhline(y=limitGSR, color='r', linestyle='--', linewidth=2)
-            except Exception as e:
-                sg.popup(f"Errore stampa linea orizzontale: {e}")
-                continue
+               drawGsrLimit = False
+            
+            if removeGsrLimit == True:
+               limitGSR=int(values['-GSR-'])
+               # Trova tutte le linee orizzontali (axhline) con lo stesso colore e stile
+               lines_to_remove = [line for line in ax.lines if line.get_color() == 'r' and line.get_linestyle() == '--']
+    
+                # Rimuovi le linee trovate
+               for line in lines_to_remove:
+                    line.remove()
+               removeGsrLimit = False
+               
+            if addTopic == True:
+               timeTopic = time_as_int() - start_time
+               print(timeTopic)
+               topicName=values['-TOPIC-']
+               print(topicName)
+               ax.axvline(x=timeTopic, color='red', linestyle='--')
+               ax.text(timeTopic, 1, topicName, color='black', rotation=90, va='center')
+               ax2.axvline(x=timeTopic, color='red', linestyle='--')
+               ax2.text(timeTopic, 10, topicName, color='black', rotation=90, va='center')
+               ax3.axvline(x=timeTopic, color='red', linestyle='--')
+               ax3.text(timeTopic, 300, topicName, color='black', rotation=90, va='center')
+
+               
+               addTopic = False
+            
             
             line.set_data(timestamps, values3)
             line2.set_data(timestamps2, battiti)
+            line3.set_data(timestamps3, emgSeries)
             ax.relim()
             ax.autoscale_view()
             ax2.relim()
             ax2.autoscale_view()
+            ax3.relim()
+            ax3.autoscale_view()
+
 
             # Imposta solo 5 valori come indicatori sull'asse X
             max_ticks = 5  # Numero di indicatori desiderati sull'asse X
             ax.xaxis.set_major_locator(plt.MaxNLocator(max_ticks))
             ax2.xaxis.set_major_locator(plt.MaxNLocator(max_ticks))
+            ax3.xaxis.set_major_locator(plt.MaxNLocator(max_ticks))
 
             canvas.draw()
             canvas2.draw()
+            canvas3.draw()
+            canvas4.draw()
 
             time.sleep(0.1)
+
+
+
 
 
 
@@ -322,9 +381,11 @@ pause_position = 0  # Posizione di pausa dell'audio
 values1 = []
 values2 = []
 values3 = []
+emgSeries = []
 #last_values = ["", "", ""]  # lista vuota per contenere gli ultimi 3 valori
 timestamps = []
 timestamps2 = []
+timestamps3 = []
 interpolati = []
 battiti = []
 
@@ -340,9 +401,40 @@ def get_available_ports():
 # Crea la lista dei baudrate disponibili
 baud_list = ["1200", "2400", "4800", "9600", "19200", "38400", "57600", "115200"]
 
+
+# Creazione dei frame canvas
+
+
+frame_gsr = [
+    [sg.Canvas(key="canvas")],
+    [sg.Text("Inserisci soglia:",background_color="white", text_color="black"), sg.InputText(key="-GSR-",default_text="0"), sg.Button("Aggiungi", key="-DRAW-GSR-"),sg.Button("Rimuovi", key="-REMOVE-GSR-")],
+    [sg.Text("", size=(100, 2), key="-LAST_VALUES_GSR-",background_color="white", text_color="black"), ],
+    
+    
+]
+frameGSR = sg.Frame("", frame_gsr, background_color="white",key="-FRAME-GSR-")
+
+
+frame_hr = [
+    [sg.Canvas(key="canvas2")],
+    [sg.Text("", size=(100, 2), key="-LAST_VALUES_HR-", background_color="white",text_color="black")],
+   
+]
+frameHR = sg.Frame("", frame_hr, background_color="white",key="-FRAME-HR-")
+
+frame_emg = [
+    [sg.Canvas(key="canvas3")],
+    [sg.Text("", size=(100, 2), key="-LAST_VALUES_EMG-",background_color="white",text_color="black")],
+   
+]
+frameEMG = sg.Frame("", frame_emg, background_color="white",key="-FRAME-EMG-")
+
+
+
+
 # Definisci il layout
-sg.theme('LightGreen2')
-layout = [
+sg.theme('Lightgreen2')
+tab1_layout = [
     [
         sg.Column(
             [
@@ -358,14 +450,7 @@ layout = [
                 [sg.Text("Seleziona il baudrate:")],
                 [sg.Combo(baud_list, size=(30, 1), key="-BAUD-", default_value="115200")],
                 [sg.Multiline(size=(50, 10), key="-OUTPUT-")],
-                [sg.Text("Inserisci il tuo codice identificativo:")],
-                [sg.InputText(identificativo, key="-IDENTIFICATIVO-")],
-                [sg.Text("Inserisci un valore soglia GSR:")],
-                [sg.InputText(key="-GSR-",default_text="0")],
-                [sg.Text("Aumento % per suono GSR:")],
-                [sg.InputText(key="-PERCINCREASE-",default_text="0")],
-                [sg.Text("Su quanti secondi (0 per non attivare il suono):")],
-                [sg.InputText(key="-SECINCREASE-",default_text="0")],
+                
                 
                 [sg.Text("Seleziona un file audio:")],
                 [sg.Combo(audio_files, key="-FILE-")],
@@ -374,46 +459,120 @@ layout = [
                     sg.Button("Stop", key="-STOP-"),
                     sg.Button("Esci", key="-EXIT-"),
                 ],
-                
-                
-                
-            ],
-            vertical_alignment="top",
-        ),
-        sg.Column(
-            [
-                
-                [sg.Text("Ultimi tre valori:")],
-                [sg.Text("", size=(50, 20), key="-LAST_VALUES-")],
                 [sg.Text("Timer")],
                 [sg.Text("", size=(50, 1), key="-TIMER-")],
+                [sg.Text("Inserisci topic:")], 
+                [sg.InputText(key="-TOPIC-")],
+                [sg.Button("Aggiungi", key="-ADD-TOPIC-")],
+                
+                
+                
             ],
-            vertical_alignment="top",
+            vertical_alignment="top",  size=(None, 1080),
         ),
-        sg.Column([[sg.Canvas(key="canvas")], 
-                   [sg.Canvas(key="canvas2")]],
-                  vertical_alignment="top"
+        
+        sg.Column([[frameGSR],
+                   [frameEMG], 
+            ],
+                  vertical_alignment="top", size=(800,1000)
+                  ),
+        sg.Column([
+                   [frameHR]],
+                  vertical_alignment="top",  size=(800,1000)
                   ),
         
     ]
 ]
 
 
+tab2_layout = [
+    [
+        
+        sg.Column(
+            [
+                
+                [sg.Text("Inserisci il tuo codice identificativo:")],
+                [sg.InputText(identificativo, key="-IDENTIFICATIVO-")],
+                
+                [sg.Text("Aumento % per suono GSR:")],
+                [sg.InputText(key="-PERCINCREASE-",default_text="0")],
+                [sg.Text("Su quanti secondi (0 per non attivare il suono):")],
+                [sg.InputText(key="-SECINCREASE-",default_text="0")],
+                [sg.Text("DATI ATTIVI")],  # Etichetta per la casella di controllo GSR
+                [sg.Checkbox("Abilita GSR", key="-ENABLE-GSR-", default=True)],  # Casella di controllo GSR
+                [sg.Checkbox("Abilita HEART RATE", key="-ENABLE-HR-", default=True)],  # Casella di controllo GSR
+                [sg.Checkbox("Abilita EMG", key="-ENABLE-EMG-", default=False)],  # Casella di controllo GSR
+                [
+                    sg.Button("SAVE", key="-SAVE-SETTINGS-"),
+                    sg.Button("LOAD", key="-LOAD-SETTINGS-"),
+                    
+                ],
+                
+              
+                
+            ],
+            vertical_alignment="top",
+        ),
+        
+        sg.Column([
+                  [sg.Canvas(key="canvas4")],
+                                    
+                  ],
+                  vertical_alignment="top",  size=(800,1000)
+        ),        
+    ]
+]
+
+
+layout = [
+    [
+        sg.TabGroup(
+            [
+                [
+                    sg.Tab("Gestione dati", tab1_layout, key="-TAB1-"),
+                    sg.Tab("Impostazioni", tab2_layout, key="-TAB2-"),
+                ]
+            ]
+        )
+    ]
+]
+
+
 # Crea la finestra dell'interfaccia grafica
-window = sg.Window("OPENBIOFEEDBACK", layout, finalize=True, resizable=True,)
+window = sg.Window("OPENBIOFEEDBACK", layout, size=(1920, 1080),finalize=True, resizable=True,)
+
+#carico i settings
+try:
+    with open(settings_file_path, "r") as file:
+        settings = json.load(file)
+except Exception as e:
+    print(f"Errore durante il caricamento delle impostazioni: {e}")
+        
+window["-IDENTIFICATIVO-"].update(settings.get("identificativo", ""))
+window["-GSR-"].update(settings.get("gsr_threshold", ""))
+window["-PERCINCREASE-"].update(settings.get("perc_increase", ""))
+window["-SECINCREASE-"].update(settings.get("sec_increase", ""))
+window["-ENABLE-GSR-"].update(settings.get("enable_gsr", False))
+window["-ENABLE-HR-"].update(settings.get("enable_hr", False))
+window["-ENABLE-EMG-"].update(settings.get("enable_emg", False))
 
 
 # Creazione iniziale dei grafici e dei canvas
 fig, ax = plt.subplots()
 fig2, ax2 = plt.subplots()
+fig3, ax3 = plt.subplots()
 
 (line,) = ax.plot(timestamps, values3, color="blue", label="GSR")
 (line2,) = ax2.plot(timestamps2, battiti, color="red", label="HR")
+(line3,) = ax3.plot(timestamps3, emgSeries, color="green", label="EMG")
 
 line.set_label("GSR")
 line2.set_label("HR")
+line3.set_label("EMG")
 ax.legend(loc="upper left")
 ax2.legend(loc="upper left")
+ax3.legend(loc="upper left")
+
 
 
 def format_xaxis(x, _):
@@ -423,14 +582,37 @@ def format_xaxis(x, _):
 # Formatta asse X hh:mm:ss
 ax.xaxis.set_major_formatter(ticker.FuncFormatter(format_xaxis))
 ax2.xaxis.set_major_formatter(ticker.FuncFormatter(format_xaxis))
+ax3.xaxis.set_major_formatter(ticker.FuncFormatter(format_xaxis))
 
 canvas = FigureCanvasTkAgg(fig, master=window["canvas"].TKCanvas)
 canvas.draw()
 canvas.get_tk_widget().pack(side="top", fill="both", expand=True)
 
+
 canvas2 = FigureCanvasTkAgg(fig2, master=window["canvas2"].TKCanvas)
 canvas2.draw()
 canvas2.get_tk_widget().pack(side="top", fill="both", expand=True)
+
+canvas3 = FigureCanvasTkAgg(fig3, master=window["canvas3"].TKCanvas)
+canvas3.draw()
+canvas3.get_tk_widget().pack(side="top", fill="both", expand=True)
+
+canvas4 = FigureCanvasTkAgg(fig3, master=window["canvas4"].TKCanvas)
+canvas4.draw()
+canvas4.get_tk_widget().pack(side="top", fill="both", expand=True)
+
+
+# Imposta l'altezza del canvas per il primo grafico (ad esempio 400 pixel)
+canvas.get_tk_widget().configure(height=400)
+
+# Imposta l'altezza del canvas per il secondo grafico (ad esempio 300 pixel)
+canvas2.get_tk_widget().configure(height=400)
+
+#Imposta l'altezza del canvas per il secondo grafico (ad esempio 300 pixel)
+canvas3.get_tk_widget().configure(height=400)
+
+#Imposta l'altezza del canvas per il secondo grafico (ad esempio 300 pixel)
+canvas4.get_tk_widget().configure(height=400)
 
 # Imposta clearOn a True per consentire la creazione iniziale dei grafici
 clearOn = True
@@ -439,6 +621,82 @@ clearOn = True
 # Loop principale dell'applicazione
 while True:
     event, values = window.read(timeout=100)
+    
+    
+    
+    gsr_enabled = values["-ENABLE-GSR-"]
+    emg_enabled = values["-ENABLE-EMG-"]
+    hr_enabled = values["-ENABLE-HR-"]
+    
+    if gsr_enabled:
+        window['-FRAME-GSR-'].update(visible=True)  # Riattiva il canvas del frame GSR
+
+    else:
+        window['-FRAME-GSR-'].update(visible=False)  # Nascondi il canvas del frame GSR
+    
+    if emg_enabled:
+        window['-FRAME-EMG-'].update(visible=True)  # Riattiva il canvas del frame GSR
+
+    else:
+        window['-FRAME-EMG-'].update(visible=False)  # Nascondi il canvas del frame GSR
+        
+    if hr_enabled:
+        window['-FRAME-HR-'].update(visible=True)  # Riattiva il canvas del frame GSR
+
+    else:
+        window['-FRAME-HR-'].update(visible=False)  # Nascondi il canvas del frame GSR
+
+    if event == "-DRAW-GSR-":
+        drawGsrLimit = True
+    
+    if event == "-REMOVE-GSR-":
+        removeGsrLimit = True
+
+    if event == "-ADD-TOPIC-":
+            addTopic = True
+        
+    
+    
+    
+    #SALVATTAGIO IMPOSTAZIONI
+    if event == "-SAVE-SETTINGS-":
+        print("salvo")
+        settings = {
+                        "identificativo": window["-IDENTIFICATIVO-"].get(),
+                        "gsr_threshold": int(window["-GSR-"].get()),
+                        "perc_increase": int(window["-PERCINCREASE-"].get()),
+                        "sec_increase": int(window["-SECINCREASE-"].get()),
+                        "enable_gsr": window["-ENABLE-GSR-"].get(),
+                        "enable_hr": window["-ENABLE-HR-"].get(),
+                        "enable_emg": window["-ENABLE-EMG-"].get(),
+                    }
+        print(settings)
+        # Salva le impostazioni in un file JSON
+        try:
+            with open(settings_file_path, "w") as file:
+                json.dump(settings, file)
+        except Exception as e:
+            print(f"Errore durante il salvataggio delle impostazioni: {e}")
+
+        
+    #carico impostazionie
+    if event =="-LOAD-SETTINGS-":
+        try:
+            with open(settings_file_path, "r") as file:
+                settings = json.load(file)
+        except Exception as e:
+            print(f"Errore durante il caricamento delle impostazioni: {e}")
+        
+        window["-IDENTIFICATIVO-"].update(settings.get("identificativo", ""))
+        window["-GSR-"].update(settings.get("gsr_threshold", ""))
+        window["-PERCINCREASE-"].update(settings.get("perc_increase", ""))
+        window["-SECINCREASE-"].update(settings.get("sec_increase", ""))
+        window["-ENABLE-GSR-"].update(settings.get("enable_gsr", False))
+        window["-ENABLE-HR-"].update(settings.get("enable_hr", False))
+        window["-ENABLE-EMG-"].update(settings.get("enable_emg", False))
+    
+    
+    
     if event == "-EXIT-" or event == sg.WIN_CLOSED:
         break
 
