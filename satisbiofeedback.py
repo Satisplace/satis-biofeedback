@@ -2,13 +2,15 @@
 # Licence GPL3
 
 
-
 import csv
 import json
 import os
 import random
 import serial
 import time
+import datetime
+from datetime import date
+from PIL import Image
 import PySimpleGUI as sg
 from datetime import datetime
 import threading
@@ -26,6 +28,8 @@ from hrvanalysis import remove_outliers, remove_ectopic_beats, interpolate_nan_v
 from hrvanalysis import get_time_domain_features
 from hrvanalysis.extract_features import _get_freq_psd_from_nn_intervals
 from hrvanalysis.extract_features import get_poincare_plot_features
+import tkinter as tk
+from tkinter import filedialog
 
 from hrvanalysis import get_frequency_domain_features
 #from hrvanalysis import plot_timeseries, plot_distrib, plot_psd, plot_poincare
@@ -38,7 +42,9 @@ settings_file_path = os.path.join(os.path.dirname(__file__), "impostazioni.json"
 ser = None
 reading_serial = False
 graph_running = False
+graphOn = False
 firstRun = False
+
 
 increaseGsrDetect=False
 indexIncreaseGsrDetect = 0
@@ -65,9 +71,53 @@ collectOn = False
 printOn = False
 drawGsrLimit = False
 removeGsrLimit = False
+drawEmgLimit = False
+removeEmgLimit = False
+
 addTopic = False
 
 
+
+#def export_graph_as_image(filename, canvasImport):
+    #canvas_elem = canvas.Widget.canvasImport
+    #canvas_elem.postscript(file=filename, colormode='color')
+
+
+
+#funzione salvattagio in CSV della serie dati
+def crea_file_csv_interfaccia(data, identificativo, sessione, tipo, lista1, lista2):
+    # Verifica che le liste abbiano la stessa lunghezza
+    if len(lista1) != len(lista2):
+        raise ValueError("Le liste 'lista1' e 'lista2' devono avere la stessa lunghezza.")
+
+    # Crea una finestra tkinter
+    root = tk.Tk()
+    root.withdraw()  # Nasconde la finestra principale
+
+    # Chiedi all'utente di selezionare la cartella di salvataggio
+    #cartella_salvataggio = filedialog.askdirectory(title="Seleziona la cartella di salvataggio")
+
+    #if not cartella_salvataggio:
+        #return  # L'utente ha annullato la selezione della cartella
+
+    # Chiedi all'utente di inserire il nome del file CSV
+    nome_file = filedialog.asksaveasfilename(title="Salva come", initialfile="output.csv", defaultextension=".csv", filetypes=[("CSV files", "*.csv")])
+
+    if not nome_file:
+        return  # L'utente ha annullato la selezione del nome del file
+
+    # Crea una lista di tuple contenente i dati
+    dati = [(data, identificativo, sessione, tipo, lista1[i], lista2[i]) for i in range(len(lista1))]
+
+    # Apre il file CSV in modalità scrittura
+    with open(nome_file, 'w', newline='') as file_csv:
+        writer = csv.writer(file_csv)
+
+        # Scrive l'intestazione del CSV
+        writer.writerow(['data', 'identificativo', 'sessione' ,'tipo', 'lista1', 'lista2'])
+
+        # Scrive i dati nel file CSV
+        writer.writerows(dati)
 
 
 # funzione collezione dati seriali e stampa a video dell'ultimo dato
@@ -75,7 +125,9 @@ def collect_serial_data():
     global ser, decoded_bytes, ser_bytes, currentDateAndTime, timenow, battiti,sd_nn, rmssd, min_hr, max_hr, gsrNow, nn_intervals_list, mean_hr, lfband,hfband,vlf,lfHfRatio, limitGSR, timeOverGsrMax, indexIncreaseGsrDetect, increaseGsrDetect,increaseGSR,playBell
     peakDetectorInterval = int(values['-SECINCREASE-'])
     increaseGsrMax = int(values['-PERCINCREASE-'])
+    gsrCalibration = float(values['-GSR-CALIBRATION-'])
     hrGot = False
+    gsrNow = 0
     if ser and collectOn:
              
         #limitGSR=float(values['-GSR-'])      
@@ -88,9 +140,9 @@ def collect_serial_data():
         # Dividi i dati in base alle virgole
         
         if decoded_bytes.startswith('G-'):
-                values3.append(float(decoded_bytes[2:]))  # Rimuovi 'G-' e converte in float
+                values3.append(float(decoded_bytes[2:])+gsrCalibration)  # Rimuovi 'G-' e converte in float
                 timestamps.append(time_as_int() - start_time)
-                gsrNow = float(decoded_bytes[2:])
+                gsrNow = float(decoded_bytes[2:]) + gsrCalibration
                 #verifica se negli ultimi 20 secondi c'è stato un aumento del GSR
                 
                 if len(values3)-indexIncreaseGsrDetect > peakDetectorInterval:
@@ -201,7 +253,7 @@ def play_bell():
 
 # Funzione per l'aggiornamento del grafico
 def update_graph():
-    global ax, ax2, ax3, clearOn, playBell, drawGsrLimit, removeGsrLimit, addTopic
+    global ax, ax2, ax3, clearOn, playBell, drawGsrLimit, removeGsrLimit, addTopic, drawEmgLimit, removeEmgLimit, graphOn
     
             
     while graph_running:
@@ -273,6 +325,24 @@ def update_graph():
                     line.remove()
                removeGsrLimit = False
                
+            
+            if drawEmgLimit == True:
+                             
+               limitEMG=int(values['-EMG-'])
+               ax3.axhline(y=limitEMG, color='r', linestyle='--', linewidth=2)
+               drawEmgLimit = False
+            
+            if removeEmgLimit == True:
+               limitEMG=int(values['-EMG-'])
+               # Trova tutte le linee orizzontali (axhline) con lo stesso colore e stile
+               lines_to_remove = [line for line in ax3.lines if line.get_color() == 'r' and line.get_linestyle() == '--']
+    
+                # Rimuovi le linee trovate
+               for line in lines_to_remove:
+                    line.remove()
+               removeEmgLimit = False
+               
+            
             if addTopic == True:
                timeTopic = time_as_int() - start_time
                print(timeTopic)
@@ -306,10 +376,11 @@ def update_graph():
             ax2.xaxis.set_major_locator(plt.MaxNLocator(max_ticks))
             ax3.xaxis.set_major_locator(plt.MaxNLocator(max_ticks))
 
-            canvas.draw()
-            canvas2.draw()
-            canvas3.draw()
-            canvas4.draw()
+            if graphOn:    
+                canvas.draw()
+                canvas2.draw()
+                canvas3.draw()
+                canvas4.draw()
 
             time.sleep(0.1)
 
@@ -409,6 +480,7 @@ frame_gsr = [
     [sg.Canvas(key="canvas")],
     [sg.Text("Inserisci soglia:",background_color="white", text_color="black"), sg.InputText(key="-GSR-",default_text="0"), sg.Button("Aggiungi", key="-DRAW-GSR-"),sg.Button("Rimuovi", key="-REMOVE-GSR-")],
     [sg.Text("", size=(100, 2), key="-LAST_VALUES_GSR-",background_color="white", text_color="black"), ],
+   
     
     
 ]
@@ -418,13 +490,16 @@ frameGSR = sg.Frame("", frame_gsr, background_color="white",key="-FRAME-GSR-")
 frame_hr = [
     [sg.Canvas(key="canvas2")],
     [sg.Text("", size=(100, 2), key="-LAST_VALUES_HR-", background_color="white",text_color="black")],
+    
    
 ]
 frameHR = sg.Frame("", frame_hr, background_color="white",key="-FRAME-HR-")
 
 frame_emg = [
     [sg.Canvas(key="canvas3")],
+    [sg.Text("Inserisci soglia:",background_color="white", text_color="black"), sg.InputText(key="-EMG-",default_text="0"), sg.Button("Aggiungi", key="-DRAW-EMG-"),sg.Button("Rimuovi", key="-REMOVE-EMG-")],
     [sg.Text("", size=(100, 2), key="-LAST_VALUES_EMG-",background_color="white",text_color="black")],
+    
    
 ]
 frameEMG = sg.Frame("", frame_emg, background_color="white",key="-FRAME-EMG-")
@@ -459,6 +534,9 @@ tab1_layout = [
                     sg.Button("Stop", key="-STOP-"),
                     sg.Button("Esci", key="-EXIT-"),
                 ],
+                [sg.Button("Esporta GSR", key="-SALVA-GSR-")],
+                [sg.Button("Esporta HR", key="-SALVA-HR-")],
+                [sg.Button("Esporta EMG", key="-SALVA-EMG-")],
                 [sg.Text("Timer")],
                 [sg.Text("", size=(50, 1), key="-TIMER-")],
                 [sg.Text("Inserisci topic:")], 
@@ -493,11 +571,8 @@ tab2_layout = [
                 
                 [sg.Text("Inserisci il tuo codice identificativo:")],
                 [sg.InputText(identificativo, key="-IDENTIFICATIVO-")],
-                
-                [sg.Text("Aumento % per suono GSR:")],
-                [sg.InputText(key="-PERCINCREASE-",default_text="0")],
-                [sg.Text("Su quanti secondi (0 per non attivare il suono):")],
-                [sg.InputText(key="-SECINCREASE-",default_text="0")],
+                [sg.Text("Calibrazione GSR:")],
+                [sg.InputText(key="-GSR-CALIBRATION-",default_text="0")],
                 [sg.Text("DATI ATTIVI")],  # Etichetta per la casella di controllo GSR
                 [sg.Checkbox("Abilita GSR", key="-ENABLE-GSR-", default=True)],  # Casella di controllo GSR
                 [sg.Checkbox("Abilita HEART RATE", key="-ENABLE-HR-", default=True)],  # Casella di controllo GSR
@@ -507,6 +582,12 @@ tab2_layout = [
                     sg.Button("LOAD", key="-LOAD-SETTINGS-"),
                     
                 ],
+                [sg.Text("ALERT")],
+                
+                [sg.Text("Aumento % per suono GSR:")],
+                [sg.InputText(key="-PERCINCREASE-",default_text="0")],
+                [sg.Text("Su quanti secondi (0 per non attivare il suono):")],
+                [sg.InputText(key="-SECINCREASE-",default_text="0")],
                 
               
                 
@@ -540,6 +621,7 @@ layout = [
 
 # Crea la finestra dell'interfaccia grafica
 window = sg.Window("OPENBIOFEEDBACK", layout, size=(1920, 1080),finalize=True, resizable=True,)
+
 
 #carico i settings
 try:
@@ -627,6 +709,7 @@ while True:
     gsr_enabled = values["-ENABLE-GSR-"]
     emg_enabled = values["-ENABLE-EMG-"]
     hr_enabled = values["-ENABLE-HR-"]
+    sessionName = values["-FILE-"]
     
     if gsr_enabled:
         window['-FRAME-GSR-'].update(visible=True)  # Riattiva il canvas del frame GSR
@@ -651,10 +734,33 @@ while True:
     
     if event == "-REMOVE-GSR-":
         removeGsrLimit = True
+        
+    if event == "-DRAW-EMG-":
+        drawEmgLimit = True
+    
+    if event == "-REMOVE-EMG-":
+        removeEmgLimit = True
 
     if event == "-ADD-TOPIC-":
             addTopic = True
         
+    
+    
+    #SALVATTAGIO DATI GSR
+    if event == "-SALVA-GSR-":
+        dateToday = date.today()
+        crea_file_csv_interfaccia(dateToday, identificativo, sessionName, "GSR", timestamps, values3)
+        
+    if event == "-SALVA-EMG-":
+        dateToday = date.today()
+        crea_file_csv_interfaccia(dateToday, identificativo, sessionName, "EMG", timestamps3, emgSeries)
+        
+    if event == "-SALVA-HR-":
+        dateToday = date.today()
+        crea_file_csv_interfaccia(dateToday, identificativo, sessionName, "HR", timestamps2, values2)
+        
+    
+
     
     
     
@@ -703,6 +809,8 @@ while True:
     if event == "-EXIT-" or event == sg.WIN_CLOSED:
         break
     elif event == "-START-":
+        window["-SALVA-GSR-"].update(disabled=True)
+        graphOn = True
         (values['-GSR-'])
         if not values["-PORT-"]:
             sg.popup("Seleziona una porta seriale.")
@@ -758,6 +866,8 @@ while True:
                     sg.popup("Nessun file audio selezionato.")
 
     elif event == "-STOP-":
+        graphOn=False
+        window["-SALVA-GSR-"].update(disabled=False)
         pygame.mixer.music.stop()
         collectOn = False
         window["-STOP-"].update(disabled=True)
