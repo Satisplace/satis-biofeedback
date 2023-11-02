@@ -34,28 +34,24 @@ from tkinter import filedialog
 from hrvanalysis import get_frequency_domain_features
 #from hrvanalysis import plot_timeseries, plot_distrib, plot_psd, plot_poincare
 
-settings_file_path = os.path.join(os.path.dirname(__file__), "impostazioni.json")
+settings_file_path = os.path.join(os.path.dirname(__file__), "settings.json")
 
 
-
-# inizializza variabili a FALSE
+# inizialize variables
 ser = None
 reading_serial = False
 graph_running = False
 graphOn = False
 firstRun = False
 
-
 increaseGsrDetect=False
 indexIncreaseGsrDetect = 0
-#peakDetectorInterval = 10
-#increaseGsrMax = 1000000 #a value never happen
 playBell=False
 
-sd_nn = 0.0  # Inizializza sd_nn con un valore predefinito
-rmssd = 0.0  # Inizializza rmssd con un valore predefinito
-min_hr = 0.0  # Inizializza min_hr con un valore predefinito
-max_hr = 0.0  # Inizializza max_hr con un valore predefinito
+sd_nn = 0.0  
+rmssd = 0.0  
+min_hr = 0.0  
+max_hr = 0.0  
 mean_hr= 0.0
 lfband= 0.0
 hfband= 0.0
@@ -63,9 +59,6 @@ vlf= 0.0
 lfHfRatio = 0.0
 
 timeOverGsrMax = 0
-
-
-
 
 collectOn = False
 printOn = False
@@ -75,82 +68,71 @@ drawEmgLimit = False
 removeEmgLimit = False
 
 addTopic = False
+gsrNow = 0
+identificativo = ''
 
 
-
-#def export_graph_as_image(filename, canvasImport):
-    #canvas_elem = canvas.Widget.canvasImport
-    #canvas_elem.postscript(file=filename, colormode='color')
-
-
-
-#funzione salvattagio in CSV della serie dati
-def crea_file_csv_interfaccia(data, identificativo, sessione, tipo, lista1, lista2):
-    # Verifica che le liste abbiano la stessa lunghezza
+#FUNCTION: save in CSV data
+def create_csv_file(data, identificativo, sessione, tipo, lista1, lista2):
+    # Verify lists have same lenght
     if len(lista1) != len(lista2):
-        raise ValueError("Le liste 'lista1' e 'lista2' devono avere la stessa lunghezza.")
+        raise ValueError("Can't save becouse data lists should have same lenght")
 
-    # Crea una finestra tkinter
+    # Create tkinter windows
     root = tk.Tk()
-    root.withdraw()  # Nasconde la finestra principale
+    root.withdraw()  # hide main windows
 
-    # Chiedi all'utente di selezionare la cartella di salvataggio
-    #cartella_salvataggio = filedialog.askdirectory(title="Seleziona la cartella di salvataggio")
-
-    #if not cartella_salvataggio:
-        #return  # L'utente ha annullato la selezione della cartella
-
-    # Chiedi all'utente di inserire il nome del file CSV
-    nome_file = filedialog.asksaveasfilename(title="Salva come", initialfile="output.csv", defaultextension=".csv", filetypes=[("CSV files", "*.csv")])
+    # Ask CSV file name
+    nome_file = filedialog.asksaveasfilename(title="Save as", initialfile="output.csv", defaultextension=".csv", filetypes=[("CSV files", "*.csv")])
 
     if not nome_file:
-        return  # L'utente ha annullato la selezione del nome del file
+        return  # user escape
 
-    # Crea una lista di tuple contenente i dati
+    # Create alist with data
     dati = [(data, identificativo, sessione, tipo, lista1[i], lista2[i]) for i in range(len(lista1))]
 
-    # Apre il file CSV in modalità scrittura
+    # open csv in write mode
     with open(nome_file, 'w', newline='') as file_csv:
         writer = csv.writer(file_csv)
 
-        # Scrive l'intestazione del CSV
-        writer.writerow(['data', 'identificativo', 'sessione' ,'tipo', 'lista1', 'lista2'])
+        # Write CSV header
+        writer.writerow(['Date', 'ID', 'Session' ,'Type', 'Time', 'Value'])
 
-        # Scrive i dati nel file CSV
+        # write CSV dat
         writer.writerows(dati)
 
 
-# funzione collezione dati seriali e stampa a video dell'ultimo dato
+# FUNCTION: collect data from serial and print 
 def collect_serial_data():
     global ser, decoded_bytes, ser_bytes, currentDateAndTime, timenow, battiti,sd_nn, rmssd, min_hr, max_hr, gsrNow, nn_intervals_list, mean_hr, lfband,hfband,vlf,lfHfRatio, limitGSR, timeOverGsrMax, indexIncreaseGsrDetect, increaseGsrDetect,increaseGSR,playBell
     peakDetectorInterval = int(values['-SECINCREASE-'])
     increaseGsrMax = int(values['-PERCINCREASE-'])
     gsrCalibration = float(values['-GSR-CALIBRATION-'])
     hrGot = False
-    gsrNow = 0
+   
     if ser and collectOn:
              
-        #limitGSR=float(values['-GSR-'])      
+        
         ser_bytes = ser.readline()
         decoded_bytes = ser_bytes.decode("utf-8").rstrip()
         
         window["-OUTPUT-"].print(decoded_bytes)
         
       
-        # Dividi i dati in base alle virgole
+        # Split data
         
         if decoded_bytes.startswith('G-'):
-                values3.append(float(decoded_bytes[2:])+gsrCalibration)  # Rimuovi 'G-' e converte in float
+                values3.append(float(decoded_bytes[2:])+gsrCalibration)  # Remove 'G-' e convert in float
                 timestamps.append(time_as_int() - start_time)
                 gsrNow = float(decoded_bytes[2:]) + gsrCalibration
-                #verifica se negli ultimi 20 secondi c'è stato un aumento del GSR
+                
                 
                 if len(values3)-indexIncreaseGsrDetect > peakDetectorInterval:
                     increaseGsrDetect=False 
                 
                 if (len(values3)>peakDetectorInterval+1) and (values3[len(values3)-(peakDetectorInterval+1)] != 0):
                     increaseGSR=(values3[len(values3)-1]-values3[len(values3)-(peakDetectorInterval+1)])/values3[len(values3)-(peakDetectorInterval+1)]*100
-                    #print(increaseGSR)
+                    
                     if increaseGSR>increaseGsrMax and increaseGsrDetect==False:
                         increaseGsrDetect=True
                         print("play sound")
@@ -159,27 +141,23 @@ def collect_serial_data():
                         indexIncreaseGsrDetect=len(values3)-1    
                 
                     
-                #if gsrNow > limitGSR:
-                    #print('sopra soglia!')
-                    #playbell
-                    #timeOverGsrMax = time_as_int();
-                    #firstBell = timeOverGsrMax;
+                
         elif decoded_bytes.startswith('H-'):
-                values2.append(int(decoded_bytes[2:]))  # Rimuovi 'H-' e converte in intero
+                values2.append(int(decoded_bytes[2:]))  # Remove 'H-' e convert in int
                 timestamps2.append(time_as_int() - start_time)
                 
                 hrGot = True
                 
         elif decoded_bytes.startswith('E-'):
-                emgSeries.append(float(decoded_bytes[2:]))  # Rimuovi 'E-' e converte in intero
-                timestamps3.append(time_as_int() - start_time) #provvisorio
+                emgSeries.append(float(decoded_bytes[2:]))  # Remove 'E-' e convert in int
+                timestamps3.append(time_as_int() - start_time) 
                 
                 
 
 
         
         if hrGot:
-            #elimino i picchi dall'HRV
+            #remove peak 
             indici_picchi, _ = find_peaks(values2)
             valori_senza_picchi = np.delete(values2, indici_picchi)
             rr_intervals_without_outliers = remove_outliers(rr_intervals=values2,  
@@ -190,13 +168,13 @@ def collect_serial_data():
             nn_intervals_list = remove_ectopic_beats(rr_intervals=interpolated_rr_intervals, method="malik")
             
             
-            if len(nn_intervals_list) > 0:  # Assicurati che la lista non sia vuota
+            if len(nn_intervals_list) > 0:  # list it's not empty
 
             
                 # This replace ectopic beats nan values with linear interpolation
                 interpolated_nn_intervals = interpolate_nan_values(rr_intervals=nn_intervals_list)
                 interpolati = interpolated_nn_intervals
-                battiti = [60000 / x  for x in interpolati] #calcolo battiti ripuliti
+                battiti = [60000 / x  for x in interpolati] #calculate beat
 
                 time_domain_features = get_time_domain_features(interpolated_nn_intervals)
                 frequency_domain_features = get_frequency_domain_features(interpolated_nn_intervals)
@@ -215,43 +193,31 @@ def collect_serial_data():
         
         window["-LAST_VALUES_GSR-"].update("")
         window["-LAST_VALUES_HR-"].update("")
-        last_values_str_gsr = ""  # Inizializza la variabile per i valori passati
-        last_values_str_hr = ""  # Inizializza la variabile per i valori passati
-        #last_values_str = f": GSR:  HR:"
+        last_values_str_gsr = ""  
+        last_values_str_hr = ""  
+       
         last_values_str_gsr = f"GSR:{gsrNow:.2f}"
         last_values_str_hr = f"SDNN:{sd_nn:.2f} RMSSD:{rmssd:.2f} minHR:{min_hr:.2f} maxHR:{max_hr:.2f} Mean HR:{mean_hr:.2f}\nLF:{lfband:.2f} HF:{hfband:.2f} VLF:{vlf:.2f} LF/HF:{lfHfRatio:.2f}"
         window["-LAST_VALUES_GSR-"].update(last_values_str_gsr)
         window["-LAST_VALUES_HR-"].update(last_values_str_hr)
-        # Aggiorna l'interfaccia grafica con il timer
+        # update timer
         timenow = format_timer(time_as_int() - start_time)
         window['-TIMER-'].update(timenow)
         
         
-    
+#FUNCTION: play bell based on increase of GSR    
 def play_bell():
-    # Inizializza pygame
+   
     pygame.init()
-
-    # Crea un mixer audio
     pygame.mixer.init()
-
-    # Specifica il percorso del file MP3 da riprodurre
     file_mp3 = 'bell.wav'
-
-    # Carica il file MP3
     pygame.mixer.music.load(file_mp3)
-
-    # Riproduci il file MP3
     pygame.mixer.music.play()
 
-    # Lascia il programma in esecuzione finché la musica sta suonando
-    #while pygame.mixer.music.get_busy():
-        #pass
+   
+   
 
-    # Chiudi pygame
-    #pygame.quit()
-
-# Funzione per l'aggiornamento del grafico
+# FUNCTION: Update graph
 def update_graph():
     global ax, ax2, ax3, clearOn, playBell, drawGsrLimit, removeGsrLimit, addTopic, drawEmgLimit, removeEmgLimit, graphOn
     
@@ -299,31 +265,33 @@ def update_graph():
                 return format_timer(int(x))
 
 
-            # Formatta asse X hh:mm:ss
+            # Format X axis hh:mm:ss
             ax.xaxis.set_major_formatter(ticker.FuncFormatter(format_xaxis))
             ax2.xaxis.set_major_formatter(ticker.FuncFormatter(format_xaxis))
             ax3.xaxis.set_major_formatter(ticker.FuncFormatter(format_xaxis))
 
             clearOn = False
+        
+        
             
         if len(battiti) == len(timestamps2) and len(values3) == len(timestamps) and len(emgSeries) == len(timestamps3):
         
             if drawGsrLimit == True:
-               #ax.axvline(x=100, color='red', linestyle='--')
+               
                
                limitGSR=int(values['-GSR-'])
                ax.axhline(y=limitGSR, color='r', linestyle='--', linewidth=2)
                drawGsrLimit = False
             
-            if removeGsrLimit == True:
-               limitGSR=int(values['-GSR-'])
-               # Trova tutte le linee orizzontali (axhline) con lo stesso colore e stile
-               lines_to_remove = [line for line in ax.lines if line.get_color() == 'r' and line.get_linestyle() == '--']
+            #if removeGsrLimit == True:
+             #  #limitGSR=int(values['-GSR-'])
+              # # Trova tutte le linee orizzontali (axhline) con lo stesso colore e stile
+               #lines_to_remove = [line for line in ax.lines if line.get_color() == 'r' and line.get_linestyle() == '--']
     
                 # Rimuovi le linee trovate
-               for line in lines_to_remove:
-                    line.remove()
-               removeGsrLimit = False
+               #for line in lines_to_remove:
+               #     line.remove()
+               #removeGsrLimit = False
                
             
             if drawEmgLimit == True:
@@ -332,15 +300,15 @@ def update_graph():
                ax3.axhline(y=limitEMG, color='r', linestyle='--', linewidth=2)
                drawEmgLimit = False
             
-            if removeEmgLimit == True:
-               limitEMG=int(values['-EMG-'])
+            #if removeEmgLimit == True:
+               #limitEMG=int(values['-EMG-'])
                # Trova tutte le linee orizzontali (axhline) con lo stesso colore e stile
-               lines_to_remove = [line for line in ax3.lines if line.get_color() == 'r' and line.get_linestyle() == '--']
+             #  lines_to_remove = [line3 for line3 in ax3.lines if line3.get_color() == 'r' and line3.get_linestyle() == '--']
     
                 # Rimuovi le linee trovate
-               for line in lines_to_remove:
-                    line.remove()
-               removeEmgLimit = False
+              # for line3 in lines_to_remove:
+               #     line3.remove()
+               #removeEmgLimit = False
                
             
             if addTopic == True:
@@ -370,8 +338,8 @@ def update_graph():
             ax3.autoscale_view()
 
 
-            # Imposta solo 5 valori come indicatori sull'asse X
-            max_ticks = 5  # Numero di indicatori desiderati sull'asse X
+            # set 5 values max on X axis
+            max_ticks = 5  
             ax.xaxis.set_major_locator(plt.MaxNLocator(max_ticks))
             ax2.xaxis.set_major_locator(plt.MaxNLocator(max_ticks))
             ax3.xaxis.set_major_locator(plt.MaxNLocator(max_ticks))
@@ -380,7 +348,7 @@ def update_graph():
                 canvas.draw()
                 canvas2.draw()
                 canvas3.draw()
-                canvas4.draw()
+               
 
             time.sleep(0.1)
 
@@ -390,41 +358,41 @@ def update_graph():
 
 
 
-# creao il thread
+# create graph thread
 graph_thread = threading.Thread(target=update_graph)
 
 
 # funzione per salvare l'identificativo
-def save_identificativo(identificativo):
-    config = configparser.ConfigParser()
-    config.read("config.ini")
-    config["SETTINGS"] = {"identificativo": identificativo}
-    with open("config.ini", "w") as configfile:
-        config.write(configfile)
+#def save_identificativo(identificativo):
+    #config = configparser.ConfigParser()
+    #config.read("config.ini")
+    #config["SETTINGS"] = {"identificativo": identificativo}
+    #with open("config.ini", "w") as configfile:
+        #config.write(configfile)
 
 
 # funzione per caricare l'identificativo
-def load_identificativo():
-    config = configparser.ConfigParser()
-    config.read("config.ini")
-    return config.get("SETTINGS", "identificativo")
+#def load_identificativo():
+    #config = configparser.ConfigParser()
+    #config.read("config.ini")
+    #return config.get("SETTINGS", "identificativo")
 
 
 # se non ancora creato lo aggiunge al file config.ini
-if not os.path.isfile("config.ini"):
-    with open("config.ini", "w") as configfile:
-        configfile.write("[SETTINGS]\nidentificativo = \n")
+#if not os.path.isfile("config.ini"):
+    #with open("config.ini", "w") as configfile:
+        #configfile.write("[SETTINGS]\nidentificativo = \n")
 
 # carico l'identificativo
-identificativo = load_identificativo()
+#identificativo = load_identificativo()
 
 
-# Funzione per ottenere il tempo come intero
+# FUNCTION: time as int
 def time_as_int():
     return int(round(time.time() * 100))
 
 
-# Formatta il timer nel formato hh:mm:ss
+# FUNCTION: format time
 def format_timer(elapsed_time):
     hours = elapsed_time // 360000
     minutes = (elapsed_time % 360000) // 6000
@@ -432,28 +400,22 @@ def format_timer(elapsed_time):
     return f"{hours:02}:{minutes:02}:{seconds:02}"
 
 
-# Imposta la sottocartella "AUDIO"
+# Set audio
 audio_folder = "AUDIO"
-
-# Ottieni la lista dei file audio nella sottocartella "AUDIO"
 audio_files = [
     f for f in os.listdir(audio_folder) if f.endswith(".mp3") or f.endswith(".wav")
 ]
-
-# Inizializza Pygame e imposta il mixer audio
 pygame.init()
 pygame.mixer.init()
-
-# Definisci lo stato della riproduzione audio
 is_playing = False
-pause_position = 0  # Posizione di pausa dell'audio
 
-# Inizializza le liste per salvare i dati letti dalla porta seriale
+
+
+# Inizialice lists to save data get from serial
 values1 = []
 values2 = []
 values3 = []
 emgSeries = []
-#last_values = ["", "", ""]  # lista vuota per contenere gli ultimi 3 valori
 timestamps = []
 timestamps2 = []
 timestamps3 = []
@@ -461,24 +423,21 @@ interpolati = []
 battiti = []
 
 
-# Crea la lista delle porte seriali disponibili
+# FUNTCTION: gest available ports
 def get_available_ports():
     import serial.tools.list_ports
 
     ports = list(serial.tools.list_ports.comports())
     return [port.device for port in ports]
 
-
-# Crea la lista dei baudrate disponibili
+# List of baudrate
 baud_list = ["1200", "2400", "4800", "9600", "19200", "38400", "57600", "115200"]
 
 
-# Creazione dei frame canvas
-
-
+# Create canvas frame
 frame_gsr = [
     [sg.Canvas(key="canvas")],
-    [sg.Text("Inserisci soglia:",background_color="white", text_color="black"), sg.InputText(key="-GSR-",default_text="0"), sg.Button("Aggiungi", key="-DRAW-GSR-"),sg.Button("Rimuovi", key="-REMOVE-GSR-")],
+    [sg.Text("Set limit:",background_color="white", text_color="black"), sg.InputText(key="-GSR-",default_text="0"), sg.Button("Add", key="-DRAW-GSR-")],
     [sg.Text("", size=(100, 2), key="-LAST_VALUES_GSR-",background_color="white", text_color="black"), ],
    
     
@@ -497,7 +456,7 @@ frameHR = sg.Frame("", frame_hr, background_color="white",key="-FRAME-HR-")
 
 frame_emg = [
     [sg.Canvas(key="canvas3")],
-    [sg.Text("Inserisci soglia:",background_color="white", text_color="black"), sg.InputText(key="-EMG-",default_text="0"), sg.Button("Aggiungi", key="-DRAW-EMG-"),sg.Button("Rimuovi", key="-REMOVE-EMG-")],
+    [sg.Text("Set limit:",background_color="white", text_color="black"), sg.InputText(key="-EMG-",default_text="0"), sg.Button("Add", key="-DRAW-EMG-")],
     [sg.Text("", size=(100, 2), key="-LAST_VALUES_EMG-",background_color="white",text_color="black")],
     
    
@@ -507,13 +466,13 @@ frameEMG = sg.Frame("", frame_emg, background_color="white",key="-FRAME-EMG-")
 
 
 
-# Definisci il layout
+# Set layout
 sg.theme('Lightgreen2')
 tab1_layout = [
     [
         sg.Column(
             [
-                [sg.Text("Seleziona la porta seriale:")],
+                [sg.Text("Select serial port:")],
                 [
                     sg.Combo(
                         get_available_ports(),
@@ -522,26 +481,26 @@ tab1_layout = [
                         enable_events=True,
                     )
                 ],
-                [sg.Text("Seleziona il baudrate:")],
+                [sg.Text("Select baudrate:")],
                 [sg.Combo(baud_list, size=(30, 1), key="-BAUD-", default_value="115200")],
                 [sg.Multiline(size=(50, 10), key="-OUTPUT-")],
                 
                 
-                [sg.Text("Seleziona un file audio:")],
+                [sg.Text("Select audio file:")],
                 [sg.Combo(audio_files, key="-FILE-")],
                 [
                     sg.Button("Start", key="-START-"),
                     sg.Button("Stop", key="-STOP-"),
-                    sg.Button("Esci", key="-EXIT-"),
+                    sg.Button("Exit", key="-EXIT-"),
                 ],
-                [sg.Button("Esporta GSR", key="-SALVA-GSR-")],
-                [sg.Button("Esporta HR", key="-SALVA-HR-")],
-                [sg.Button("Esporta EMG", key="-SALVA-EMG-")],
+                [sg.Button("Export GSR", key="-SALVA-GSR-")],
+                [sg.Button("Export HR", key="-SALVA-HR-")],
+                [sg.Button("Export EMG", key="-SALVA-EMG-")],
                 [sg.Text("Timer")],
                 [sg.Text("", size=(50, 1), key="-TIMER-")],
-                [sg.Text("Inserisci topic:")], 
+                [sg.Text("Insert topic:")], 
                 [sg.InputText(key="-TOPIC-")],
-                [sg.Button("Aggiungi", key="-ADD-TOPIC-")],
+                [sg.Button("Add", key="-ADD-TOPIC-")],
                 
                 
                 
@@ -569,14 +528,14 @@ tab2_layout = [
         sg.Column(
             [
                 
-                [sg.Text("Inserisci il tuo codice identificativo:")],
+                [sg.Text("Inserist you ID:")],
                 [sg.InputText(identificativo, key="-IDENTIFICATIVO-")],
-                [sg.Text("Calibrazione GSR:")],
+                [sg.Text("Calibrate GSR:")],
                 [sg.InputText(key="-GSR-CALIBRATION-",default_text="0")],
-                [sg.Text("DATI ATTIVI")],  # Etichetta per la casella di controllo GSR
-                [sg.Checkbox("Abilita GSR", key="-ENABLE-GSR-", default=True)],  # Casella di controllo GSR
-                [sg.Checkbox("Abilita HEART RATE", key="-ENABLE-HR-", default=True)],  # Casella di controllo GSR
-                [sg.Checkbox("Abilita EMG", key="-ENABLE-EMG-", default=False)],  # Casella di controllo GSR
+                [sg.Text("Active flow")],  
+                [sg.Checkbox("Start GSR", key="-ENABLE-GSR-", default=True)],  
+                [sg.Checkbox("Start HEART RATE", key="-ENABLE-HR-", default=True)],  
+                [sg.Checkbox("Start EMG", key="-ENABLE-EMG-", default=False)],  
                 [
                     sg.Button("SAVE", key="-SAVE-SETTINGS-"),
                     sg.Button("LOAD", key="-LOAD-SETTINGS-"),
@@ -584,9 +543,9 @@ tab2_layout = [
                 ],
                 [sg.Text("ALERT")],
                 
-                [sg.Text("Aumento % per suono GSR:")],
+                [sg.Text("Percent increase for GSR sound:")],
                 [sg.InputText(key="-PERCINCREASE-",default_text="0")],
-                [sg.Text("Su quanti secondi (0 per non attivare il suono):")],
+                [sg.Text("How many seconds (0 to silence):")],
                 [sg.InputText(key="-SECINCREASE-",default_text="0")],
                 
               
@@ -595,12 +554,7 @@ tab2_layout = [
             vertical_alignment="top",
         ),
         
-        sg.Column([
-                  [sg.Canvas(key="canvas4")],
-                                    
-                  ],
-                  vertical_alignment="top",  size=(800,1000)
-        ),        
+        
     ]
 ]
 
@@ -610,8 +564,8 @@ layout = [
         sg.TabGroup(
             [
                 [
-                    sg.Tab("Gestione dati", tab1_layout, key="-TAB1-"),
-                    sg.Tab("Impostazioni", tab2_layout, key="-TAB2-"),
+                    sg.Tab("Data management", tab1_layout, key="-TAB1-"),
+                    sg.Tab("Settings", tab2_layout, key="-TAB2-"),
                 ]
             ]
         )
@@ -619,11 +573,11 @@ layout = [
 ]
 
 
-# Crea la finestra dell'interfaccia grafica
+# Create interface
 window = sg.Window("OPENBIOFEEDBACK", layout, size=(1920, 1080),finalize=True, resizable=True,)
 
 
-#carico i settings
+#load settings
 try:
     with open(settings_file_path, "r") as file:
         settings = json.load(file)
@@ -639,7 +593,7 @@ window["-ENABLE-HR-"].update(settings.get("enable_hr", False))
 window["-ENABLE-EMG-"].update(settings.get("enable_emg", False))
 
 
-# Creazione iniziale dei grafici e dei canvas
+# First creation of graph
 fig, ax = plt.subplots()
 fig2, ax2 = plt.subplots()
 fig3, ax3 = plt.subplots()
@@ -661,7 +615,7 @@ def format_xaxis(x, _):
     return format_timer(int(x))
 
 
-# Formatta asse X hh:mm:ss
+# Formatt X hh:mm:ss
 ax.xaxis.set_major_formatter(ticker.FuncFormatter(format_xaxis))
 ax2.xaxis.set_major_formatter(ticker.FuncFormatter(format_xaxis))
 ax3.xaxis.set_major_formatter(ticker.FuncFormatter(format_xaxis))
@@ -679,28 +633,20 @@ canvas3 = FigureCanvasTkAgg(fig3, master=window["canvas3"].TKCanvas)
 canvas3.draw()
 canvas3.get_tk_widget().pack(side="top", fill="both", expand=True)
 
-canvas4 = FigureCanvasTkAgg(fig3, master=window["canvas4"].TKCanvas)
-canvas4.draw()
-canvas4.get_tk_widget().pack(side="top", fill="both", expand=True)
 
 
-# Imposta l'altezza del canvas per il primo grafico (ad esempio 400 pixel)
+
+# set canvas dimensions
 canvas.get_tk_widget().configure(height=400)
-
-# Imposta l'altezza del canvas per il secondo grafico (ad esempio 300 pixel)
 canvas2.get_tk_widget().configure(height=400)
-
-#Imposta l'altezza del canvas per il secondo grafico (ad esempio 300 pixel)
 canvas3.get_tk_widget().configure(height=400)
 
-#Imposta l'altezza del canvas per il secondo grafico (ad esempio 300 pixel)
-canvas4.get_tk_widget().configure(height=400)
 
-# Imposta clearOn a True per consentire la creazione iniziale dei grafici
+# Set clearOn a True for first creation
 clearOn = True
 
 
-# Loop principale dell'applicazione
+#################################### MAIN Loop #################################################
 while True:
     event, values = window.read(timeout=100)
     
@@ -712,22 +658,22 @@ while True:
     sessionName = values["-FILE-"]
     
     if gsr_enabled:
-        window['-FRAME-GSR-'].update(visible=True)  # Riattiva il canvas del frame GSR
+        window['-FRAME-GSR-'].update(visible=True)  
 
     else:
-        window['-FRAME-GSR-'].update(visible=False)  # Nascondi il canvas del frame GSR
+        window['-FRAME-GSR-'].update(visible=False)  
     
     if emg_enabled:
-        window['-FRAME-EMG-'].update(visible=True)  # Riattiva il canvas del frame GSR
+        window['-FRAME-EMG-'].update(visible=True)  
 
     else:
-        window['-FRAME-EMG-'].update(visible=False)  # Nascondi il canvas del frame GSR
+        window['-FRAME-EMG-'].update(visible=False)  
         
     if hr_enabled:
-        window['-FRAME-HR-'].update(visible=True)  # Riattiva il canvas del frame GSR
+        window['-FRAME-HR-'].update(visible=True)  
 
     else:
-        window['-FRAME-HR-'].update(visible=False)  # Nascondi il canvas del frame GSR
+        window['-FRAME-HR-'].update(visible=False) 
 
     if event == "-DRAW-GSR-":
         drawGsrLimit = True
@@ -746,25 +692,25 @@ while True:
         
     
     
-    #SALVATTAGIO DATI GSR
+    #SAVE DATA
     if event == "-SALVA-GSR-":
         dateToday = date.today()
-        crea_file_csv_interfaccia(dateToday, identificativo, sessionName, "GSR", timestamps, values3)
+        create_csv_file(dateToday, identificativo, sessionName, "GSR", timestamps, values3)
         
     if event == "-SALVA-EMG-":
         dateToday = date.today()
-        crea_file_csv_interfaccia(dateToday, identificativo, sessionName, "EMG", timestamps3, emgSeries)
+        create_csv_file(dateToday, identificativo, sessionName, "EMG", timestamps3, emgSeries)
         
     if event == "-SALVA-HR-":
         dateToday = date.today()
-        crea_file_csv_interfaccia(dateToday, identificativo, sessionName, "HR", timestamps2, values2)
+        create_csv_file(dateToday, identificativo, sessionName, "HR", timestamps2, values2)
         
     
-
     
     
     
-    #SALVATTAGIO IMPOSTAZIONI
+    
+    #SAVE SETTINGS
     if event == "-SAVE-SETTINGS-":
         print("salvo")
         settings = {
@@ -777,7 +723,7 @@ while True:
                         "enable_emg": window["-ENABLE-EMG-"].get(),
                     }
         print(settings)
-        # Salva le impostazioni in un file JSON
+        # Salva in json file
         try:
             with open(settings_file_path, "w") as file:
                 json.dump(settings, file)
@@ -785,13 +731,13 @@ while True:
             print(f"Errore durante il salvataggio delle impostazioni: {e}")
 
         
-    #carico impostazionie
+    #load settings
     if event =="-LOAD-SETTINGS-":
         try:
             with open(settings_file_path, "r") as file:
                 settings = json.load(file)
         except Exception as e:
-            print(f"Errore durante il caricamento delle impostazioni: {e}")
+            print(f"Error loading settings: {e}")
         
         window["-IDENTIFICATIVO-"].update(settings.get("identificativo", ""))
         window["-GSR-"].update(settings.get("gsr_threshold", ""))
@@ -813,12 +759,12 @@ while True:
         graphOn = True
         (values['-GSR-'])
         if not values["-PORT-"]:
-            sg.popup("Seleziona una porta seriale.")
+            sg.popup("Select serial port")
         else:
             try:
                 ser = serial.Serial(values["-PORT-"], int(values["-BAUD-"]), timeout=1)
                 sg.popup(
-                    f"Connessione riuscita alla porta {values['-PORT-']} con baudrate {values['-BAUD-']}."
+                    f"Connected port {values['-PORT-']} with baudrate {values['-BAUD-']}."
                 )
                 reading_serial = True
                 collectOn = True
@@ -827,11 +773,11 @@ while True:
                 start_time = time_as_int()
 
             except Exception as e:
-                sg.popup(f"Errore di connessione alla porta seriale: {e}")
+                sg.popup(f"Connection Error: {e}")
                 continue
 
         if not ser:
-            sg.popup("Connetti alla porta seriale prima di avviare la lettura.")
+            sg.popup("Connect serial port")
         else:
             window["-STOP-"].update(disabled=False)
 
@@ -848,7 +794,7 @@ while True:
 
             selected_file = values["-FILE-"]
             identificativo = values["-IDENTIFICATIVO-"]
-            save_identificativo(identificativo)
+            
 
             if selected_file:
                 file_path = os.path.join(audio_folder, selected_file)
@@ -884,12 +830,12 @@ while True:
     
 
 
-# Termina il thread del grafico e chiude la porta seriale
+# End graph tread
 graph_running = False
 # graph_thread.join()
 
 if ser:
     ser.close()
 
-# Chiude la finestra dell'interfaccia grafica
+# Close windows
 window.close()
